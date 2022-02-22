@@ -21,6 +21,27 @@
               <input type="checkbox" v-model="options.settings[set]" class="settings-region-el"/>
               <span class="settings-region-el">{{formatSettingLabel(index)}}</span>
             </div>
+            <div @click="options.showMoreBox = !options.showMoreBox" class="settings-row settings-show-more-box">
+              More
+            </div>
+          </div>
+          <div v-else-if="options.showMoreBox" class="add-lines-wrapper more-info-box">
+            <span>
+              <b>Quick Tools: </b>
+              <br>
+              <br>
+              <li>Click colored icon to the left of mark to toggle showing it on chart</li>
+              <br>
+              <li>Double click any mark from list to transfer to admittance (reflect point across origin, add 0.25 wavelength, etc)</li>
+              <br>
+              <li>Hold 's' key and double click any mark to switch between types (point -> vswr point -> ... -> point)</li>
+              <br>
+              <li>Hold 'd' key and double click any mark to duplicate the mark</li>
+              <br>
+              <br>
+              <br>
+              <b>For Proffessor Robert Candler, ECE 101A, Winter '22</b>
+            </span>
           </div>
         </Transition>
       </div>
@@ -107,6 +128,8 @@ export default {
         showPane: true,
         showAddItems: false,
         showSettings: false,
+        showMoreBox: false,
+
         activeAdder: 'Point',
         settings: {
           labelRings: true,
@@ -118,11 +141,18 @@ export default {
       },
       updatingChart: false,
       updatingChartText: false,
+      curKeyDown: {},
     }
   },
   mounted(){
     window.addEventListener('resize', this.windowSizeChange);
     this.windowSizeChange('bypass');
+
+    window.addEventListener('keydown', (e) => this.curKeyDown[e.key] = true)
+    window.addEventListener('keyup', (e) => {
+      if(this.curKeyDown[e.key])
+        this.curKeyDown[e.key] = false;
+    });
   },
   methods: {
     roundValues(r0,x0){
@@ -212,7 +242,7 @@ export default {
         if(this.options.activeAdder != 'Wavelength')
           [r,x] = this.roundValues(r,x);
         if(this.options.activeAdder == 'Reactance Curve' && x == 0)
-          x = .004;
+          x = .0004;
         if(this.curColor == 3 && (this.options.activeAdder == 'Resistance Circle' || this.options.activeAdder == 'Reactance Curve'))
           this.curColor = 4;
         if(this.options.activeAdder == 'Resistance Circle')
@@ -292,6 +322,7 @@ export default {
     editMark(ind){
       this.indexSelect++;
       this.marks[ind].select = this.indexSelect;
+      console.log(ind);
     },
     checkPageClick(e){
       let className = e.target.className;
@@ -302,6 +333,8 @@ export default {
         this.options.showAddItems = false;
       if(this.options.showSettings && id != 'show-settings' && (!className.includes || !className.includes('settings-region-el')))
         this.options.showSettings = false;
+      if(this.options.showMoreBox && (!className.includes || !className.includes('settings-show-more-box')))
+        this.options.showMoreBox = false;
 
       this.clearCanvasNewLines();
     },
@@ -326,7 +359,7 @@ export default {
     },
     windowSizeChange(s){
       //set smithChartRadius and positioning in center of opening
-      let width = this.getClientWidthHeight()[0];
+      let [width, height] = this.getClientWidthHeight();
       let optionsPane = document.getElementById('options-pane');
       let optionsWidth = optionsPane ? optionsPane.offsetWidth : 0;
       
@@ -336,7 +369,7 @@ export default {
           width = this.getClientWidthHeight()[0];
         if(width == this.getClientWidthHeight()[0]){
           if(width > 700)
-            this.smithChartRadius = Math.min((width - Math.max(optionsWidth, 100) - 160) / 2, 400);
+            this.smithChartRadius = Math.min((width - Math.max(optionsWidth, 100) - 160) / 2, (height - 175) / 2,400)
           else{
             this.smithChartRadius = (width / 2) - 100;
             optionsWidth = 0;
@@ -439,14 +472,32 @@ export default {
       }
     },
     specialClickMark(ind){
-      console.log(ind);
       let mark = this.marks[ind];
-      let g = mark.r / (Math.pow(mark.r, 2) + Math.pow(mark.x, 2));
-      let b = -mark.x / (Math.pow(mark.r, 2) + Math.pow(mark.x, 2));
-      this.marks.push({type: mark.type, color: this.colors[this.curColor], r: g, x: b});
-      this.curColor = (this.curColor + 1) % this.colors.length;
-      this.clearCanvasNewLines();
-      this.editMark(this.marks.length - 1);
+      if(this.curKeyDown['s']){
+        let typeArr = ['Point','VSWR Circle','VSWR Circle Gamma','Resistance Circle','Reactance Curve','Wavelength'];
+        let newInd = (typeArr.findIndex((el) => el == mark.type) + 1 ) % 6;
+        if(newInd == 4 && mark.x == 0)
+          mark.x = 0.0004;
+        mark.type = typeArr[newInd];
+        this.editMark(ind);
+      }
+      else if(this.curKeyDown['d']){
+        this.marks.push({type: mark.type, color: this.colors[this.curColor], r: mark.r, x: mark.x});
+        this.curColor = (this.curColor + 1) % this.colors.length;
+        this.editMark(this.marks.length - 1);
+      }
+      else{
+        let r = (mark.type == 'Reactance Curve' ? 0 : mark.r);
+        let x = (mark.type == 'Resistance Circle' ? 0 : mark.x);
+
+        let g = r / (Math.pow(r, 2) + Math.pow(x, 2));
+        let b = -x / (Math.pow(r, 2) + Math.pow(x, 2));
+
+        this.marks.push({type: mark.type, color: this.colors[this.curColor], r: g, x: b});
+        this.curColor = (this.curColor + 1) % this.colors.length;
+        this.editMark(this.marks.length - 1);
+      }
+      setTimeout(this.clearCanvasNewLines, 50);
     }
   }
 }
@@ -693,5 +744,16 @@ export default {
   pointer-events: none;
   z-index: 200;
   border-radius: 50%;
+}
+.more-info-box{
+  text-align: left;
+  font-size: 12px;
+  padding: 15px 10px 15px 5px;
+}
+
+@media screen and (max-width: 800px) and (min-width: 700px), screen and (max-width: 320px){
+  .point-formatted{
+    font-size: 18px;
+  }
 }
 </style>
